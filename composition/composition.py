@@ -32,7 +32,7 @@ from multimethod import overload as singledispatch, overload as singledispatchme
 
 from inspect import _ParameterKind, signature
 
-from sspipe import Pipe
+from sspipe.pipe import Pipe
 from sspipe.pipe import _resolve
 
 dictfilt = lambda x, y: dict([(i, x[i]) for i in x if i in set(y)])

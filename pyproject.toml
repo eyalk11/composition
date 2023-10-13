@@ -1,14 +1,16 @@
 [tool.poetry]
-name = "composition"
+name = "python-composition"
 version = "0.1.0"
 description = "Add composition and applying operators to python."
 authors = ["eyalk5"]
 license = "AGPL 3.0"
 readme = "README.md"
+packages= [{include="composition"}]
 
 [tool.poetry.dependencies]
 python = "^3.10"
 multimethod="^1.10"
+sspipe="*"
 
 
 [build-system]
