@@ -55,7 +55,7 @@ Partial supports function assigment which means you can do:
  or f (lambda b: b*2}
 ``` 
 
-`//` is applying with currying. 
+It also supports currying. 
 
 The term is used freely here. It means that the original arguments can be passed to function along the chain, if it serves the purpose. 
 
@@ -67,38 +67,15 @@ def load_user(user_id: int, db: sqlite3.Connection) -> User:
 def find_computer(computer : str, db : sqlite3.Connection):
     ...
 
-C // find_computer // '-> x.Computer' //  load_user @ (user_id,db)
-``` 
-
-In this case, db was common parameters to both. And since only computer wasn't enough for the function to apply, it added db to the default. 
-
-Notice however that it depends on the order of the arguments.
-If the order would have been reversed: 
-```
-def find_computer(db : sqlite3.Connection, computer : str):
-
 ```
 
-We would need an helper function. 
+consider the above chain.  db is  common parameters to both. 
 
-``` 
-C // find_computer // lambda x,db : (db,x)  ... 
-``` 
-
-So it is still not ideal, and I wonder if it can be.. 
-
-Another approach would be: 
-```
-C / find_computer % { 'computer' : (lambda user: user.Database ) } / load_user ..  
+Now you can call specify arugment to take from ret of previous function (X,Y,Z by the order) , or just use Orig to take the same parameter from original call. 
 
 ```
-
-C / find_computer % A(db=ORIG,computer=X) / load_user / X.load_db << [1,2,3,4]
-
+C / find_computer % A(db=Orig,computer=X) / load_user
 ```
-
-
-Also notice that by default it uses x as the argument for lambda.
 
 ## Installation
 To install the project, simply run the following command:
