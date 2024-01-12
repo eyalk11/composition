@@ -1,30 +1,29 @@
 from __future__ import annotations
+
 import itertools
 import typing
 import warnings
+from contextvars import ContextVar,Context
 
-from copy import copy
 
 from typing import ParamSpec
-
 from typing import Callable, Generic, TypeVar
-from enum import Enum, Flag
+from enum import Flag
 
 import inspect
 from functools import partial
-from multimethod import overload as singledispatchmethod, overload as singledispatch
+from multimethod import overload as singledispatch, overload as singledispatchmethod
+
 
 from inspect import _ParameterKind, signature
 
 import itertools
 import typing
-from copy import copy
 from inspect import Signature
-
 from typing import ParamSpec
 
 from typing import Callable, Generic, TypeVar
-from enum import Enum, Flag
+from enum import Flag
 
 import inspect
 from functools import partial
@@ -32,11 +31,11 @@ from multimethod import overload as singledispatch, overload as singledispatchme
 
 from inspect import _ParameterKind, signature
 
-from sspipe.pipe import Pipe
-from sspipe.pipe import _resolve
+from sspipe.pipe import Pipe,_resolve
+
 
 dictfilt = lambda x, y: dict([(i, x[i]) for i in x if i in set(y)])
-dictnfilt = lambda x, y: dict([(i, x[i]) for i in x if not (i in set(y))])
+dictnfilt = lambda x, y: dict([(i, x[i]) for i in x if i not in set(y)])
 
 T = TypeVar('T')
 P = ParamSpec('P')
@@ -57,42 +56,77 @@ class MyPipe(Pipe):
         self.name = name
 
 
-Y = MyPipe(func=lambda x: x, name="Y")
-X = MyPipe(func=lambda x: x, name="X")
-Z = MyPipe(func=lambda x: x, name="Z")
+Y = Pipe(func=lambda x: x, name="Y")
+X = Pipe(func=lambda x: x, name="X")
+Z = Pipe(func=lambda x: x, name="Z")
+Orig= Pipe(func=lambda x: x, name="Orig") 
+
+XVar=ContextVar('X')
+YVar=ContextVar('Y')
+ZVar=ContextVar('Z')
+OrigVar=ContextVar('Orig')
 
 
-class A():
+class A:
     def __init__(self, *args, **kw):
         self.constargs = args
         self.constkw = kw
 
     def resolve(self, sig: Signature, origargs, args):
-        bconst = sig.bind_partial(*self.constargs, **self.constkw)
-
-        for k, v in bconst.arguments:
-            if isinstance(v, MyPipe):
-                if v.name == 'X':
-                    arg = 0
-                elif v.name == 'Y':
-                    arg = 1
-                elif v.name == 'Z':
-                    arg = 2
-                else:
-                    arg = None
+        def resolve_regarg(k,v):
+            nonlocal used_set
+            if v._name == 'X':
+                arg = 0
+            elif v._name == 'Y':
+                arg = 1
+            elif v._name == 'Z':
+                arg = 2
+            else:
+                arg = None
+            if arg is not None:
                 if arg > len(args.args):
-                    raise "not enough args"
+                    raise Exception("not enough args")
+                used_set.add(arg)
+            return  args.args[arg] if arg is not None else args.args
 
-                v = _resolve(v, args.args[arg] if arg is not None else args.args)
+        def resolve_int():
+            f=dict(zip([XVar,YVar,ZVar][:len(args.args)],args.args))
+            for k,v in f.items():
+                k.set(v)
 
 
-            elif type(v) is Orig:
-                if origargs.arguments is not None:
-                    if k in origargs.arguments:
-                        v = origargs.arguments[k]
-                else:
-                    warnings.warn(f"origargs is none. Cant resolve {k}")
-                yield k, v
+            bconst = sig.bind_partial(*self.constargs, **self.constkw)
+            dic={}
+            for k, v in bconst.arguments.items():
+                if isinstance(v, Pipe):
+                    if hasattr(v,'_name') and v._name == "Orig":
+                        if origargs.arguments is not None:
+                            if k in origargs.arguments:
+                                toresolve= origargs.arguments[k]
+                                OrigVar.set(toresolve)
+                            else:
+                                raise ValueError(f"origargs doesnt contain it. Cant resolve {k}")
+                        else:
+                            raise ValueError(f"origargs arguments not found. Cant resolve {k}")
+                    else:
+                        toresolve= resolve_regarg(k,v)
+
+                    v = _resolve(v, toresolve )
+                dic[k]=v
+
+            args.removearg(used_set)
+
+            for k in dic.items():
+                args.removekwarg(k)
+            return dic
+
+        used_set = set()
+        ctx=Context()
+        return ctx.run(resolve_int) # so that only the vars will be available in the context
+
+
+
+
 
 
 class Exp:
@@ -103,14 +137,17 @@ class ExpList(Exp):
     pass
 
 
-class Orig:
-    pass
-
 
 class CallWithArgs():
 
-    def __init__(self, other, func):
+
+
+    @singledispatchmethod
+    def __init__(self, other, func : Callable):
+
         self._arguments = None
+        if func is None:
+            return
         try:
             s = signature(func)
         except ValueError:
@@ -135,6 +172,36 @@ class CallWithArgs():
             self._kwargs = b.kwargs
             self._args = b.args
 
+    @__init__.register
+    def __init__(self, a :  A,func: Callable):
+        self.__init_b(func, a.constargs, a.constkw)
+
+    @__init__.register
+    def __init__(self, func : Callable, args : typing.Tuple, kwargs : typing.Dict):
+        self.__init_b(func, args, kwargs)
+    def __init_b(self, func : Callable, args : typing.Tuple, kwargs : typing.Dict):
+        self._args=args
+        self._kwargs=kwargs
+        try:
+            s = signature(func)
+        except ValueError:
+            self._arguments=None
+        else:
+            b = s.bind_partial(*args, **kwargs)
+
+            self._arguments = b.arguments
+            self._kwargs = b.kwargs
+            self._args = b.args
+
+    def removearg(self,ids):
+         self._args= tuple([k for i,k in enumerate(self._args) if i not in ids])
+
+
+
+
+
+    def removekwarg(self,k):
+        self._kwargs.pop(k,None)
     @property
     def args(self):
         return self._args
@@ -149,20 +216,36 @@ class CallWithArgs():
 
 
 class CInst(Generic[P, T]):
-    @singledispatch
-    def __init__(self, func: Callable, prev: CInst = None, unsafe: UnsafeType = UnsafeType.NotSafe,
-                 a: typing.Optional[A] = None):
-        self.func = func
+
+
+    @singledispatchmethod
+    def chktype(self,x:typing.Union[typing.Collection, typing.Generator]):
+        return True
+    @chktype.register
+    def chktype(self,x:typing.Callable):
+        return False
+
+    def __init__(self, other: typing.Union[typing.Collection, typing.Generator, Callable],prev : CInst = None,
+               unsafe: UnsafeType = UnsafeType.NotSafe,a: typing.Optional[A] = None):
+        self.func = None
+        self.col = None
+        if other is not None:
+            if not self.chktype(other):
+                self.func = other
+            else:
+                self.col = other
+
+
+
         self._unsafe = unsafe
         self.prev = prev
         self.origargs = None
-        self.col = None
         self._a = a
-
-    @__init__.register
-    def __init(self, other: typing.Union[typing.Collection, typing.Generator], unsafe: UnsafeType = UnsafeType.NotSafe):
-        self.col = other
-        self._unsafe = unsafe
+    def __mul__(self, other):
+        args = self.decode_args(other,True)
+        if args is None:
+            args=other
+        return self.apply_int(args,other,True)
 
     @singledispatchmethod
     def __floordiv__(self, other: Callable) -> CInst[Q, T]:
@@ -209,19 +292,27 @@ class CInst(Generic[P, T]):
             return self.col == other
         return self.func == other
 
-    def apply_with_a(self, origargs: CallWithArgs, args: typing.Any) -> T:
+    def apply_with_a(self, origargs: CallWithArgs, args: typing.Any,simple=False) -> T:
         if self.prev.func is None:
             raise ValueError("cant apply with a when prev is none")
         if self._a is None:
             raise ValueError("cant apply with a when a is none")
-        bargs = CallWithArgs(args, self.prev.func)
+        if simple:
+            bargs = CallWithArgs(self.prev.func, args=(args,), kwargs={})
+        else:
+            bargs = CallWithArgs(args, self.prev.func)
+
+        #bargs = CallWithArgs(args, self.prev.func)
         sig = signature(self.prev.func)
 
-        addargs = {k: v for (k, v) in self._a.resolve(sig, origargs,bargs)}
+        addargs =  self._a.resolve(sig, origargs,bargs)
+
         args_for_partial, kwargs_for_partial = CInst.update_args_from_additional(addargs, tuple(), {}, sig)
         nf = partial(self.prev.func, *args_for_partial, **kwargs_for_partial)
         self.prev.func = nf
-        return self.prev.apply_int(origargs, args)
+
+
+        return self.prev.apply_int_b(origargs, bargs.args, bargs.kwargs)
 
     @staticmethod
     def update_args_from_additional(add_args, bargs, kwargs, sig):
@@ -234,21 +325,23 @@ class CInst(Generic[P, T]):
                 kwargs.update({parameter: add_args[parameter]})
         return bargs, kwargs
 
-    def apply_int(self, origargs: CallWithArgs, args: typing.Any) -> T:
+
+
+    def apply_int(self, origargs: CallWithArgs, args: typing.Any,simple=False) -> T:
 
         if self._a is not None:
-            return self.apply_with_a(origargs, args)
+            return self.apply_with_a(origargs, args,simple=simple)
 
-        if self.func is None:
+
+        bargs = self.decode_args(args, simple)
+        if bargs is None:
             return args
 
-        args = CallWithArgs(args, self.func)
-
-        res = self.func(*args.args, **args.kwargs)
+        res = self.func(*bargs.args, **bargs.kwargs)
         if self.prev is None:
             return res
 
-        return self.prev.apply_int(origargs, res)
+        return self.prev.apply_int(origargs, res,simple=True)
 
         # if self._unsafe & UnsafeType.Currying != UnsafeType.Currying:
         # return basic(bargs, bkwargs)
@@ -264,6 +357,39 @@ class CInst(Generic[P, T]):
         # return basic(bargs, bkwargs)
         # return basic(bargs, bkwargs)
 
+    def decode_args(self, args, simple):
+        if self.func is None:
+            return None
+        if type(args) is not CallWithArgs:
+            if simple:
+                bargs = CallWithArgs(self.func, args=(args,), kwargs={})
+            else:
+                bargs = CallWithArgs(args, self.func)
+        else:
+            bargs = args
+        return bargs
+
+    def apply_int_b(self, origargs, args : typing.Tuple, kwargs: typing.Dict):
+        #bargs = CallWithArgs(self.func, args, kwargs)
+        if self._a is not None:
+            warnings.warn("A in this situation?")
+
+
+        if self.func is None:
+            warnings.warn("Strange")
+            return args
+
+        res = self.func(*args, **kwargs)
+        if self.prev is None:
+            return res
+
+        return self.prev.apply_int(origargs, res)
+
+
+
+
+
+
     def __or__(self, other):
         if self.col is None:
             raise ValueError('Can only use |  on collection')
@@ -271,12 +397,20 @@ class CInst(Generic[P, T]):
             return self.col
         elif type(other) == ExpList:
             return list(self.col)
+        #elif isinstance(other,Pipe ): #we do pipe
+#   inst=Pipe(lambda x: _resolve(self, x) | other)
+
+
 
     @singledispatch
     def __truediv__(self, other: Callable) -> CInst:
         if self.col is not None:
             return CInst(other(self.col), unsafe=self._unsafe)
         return CInst(other, self, self._unsafe & (~UnsafeType.Currying), None)
+
+    @__truediv__.register
+    def __truediv__(self, other: Pipe) -> CInst[Q, T]:
+        return self/ (lambda x:x) / A(x=other)
 
     @__truediv__.register
     def __truediv__(self, other: typing.Collection) -> CInst[Q, T]:
@@ -289,6 +423,10 @@ class CInst(Generic[P, T]):
         else:
             raise "cant do it when safe"
 
+    @__truediv__.register
+    def __truediv__(self, other: A):
+        return CInst(None, self, self._unsafe,other)
+
     def __and__(self, other):
         return self.__mod__(other)
 
@@ -296,7 +434,7 @@ class CInst(Generic[P, T]):
         return self.__matmul__(other)
 
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> T:
-        return self.func(*args, **kwargs)
+        return self.apply_int_b(CallWithArgs(self.func,args,kwargs), args, kwargs)
 
     @singledispatchmethod
     def __matmul__(self, other) -> T:
@@ -304,11 +442,8 @@ class CInst(Generic[P, T]):
         return self.apply(other)
 
     def apply(self, other):
-        return self.apply_int(CallWithArgs(other, self.func), other)
 
-    @__truediv__.register
-    def __truediv__(self, other: A):
-        return CInst(a=other, prev=self, unsafe=self._unsafe)
+        return self.apply_int( args if (args:= self.decode_args(other,False)) is not None else other , other)
 
     @__matmul__.register
     def __matmul__(self, other: typing.Callable) -> T:
@@ -342,7 +477,7 @@ class CInst(Generic[P, T]):
             for k in self.col:
                 yield other(k)
 
-        return CInst(gen(), self._unsafe)
+        return CInst(gen(), unsafe=self._unsafe)
 
     @__lshift__.register
     def __lshift__(self, other: str):
@@ -435,6 +570,23 @@ class CInst(Generic[P, T]):
             fn = partial(self.func, other)
         return CInst(fn, self.prev, unsafe=self._unsafe)
 
+    def __getattr__(self,name):
+        import inspect
+        locals= inspect.currentframe().f_back.f_locals
+        if name in locals:
+            func=locals[name]
+        else:
+            globals = inspect.currentframe().f_back.f_globals
+            if name in globals:
+                func = globals[name]
+            else:
+                return super().__getattr__(name)
+                #raise AttributeError(f"no attribute {name}")
+
+
+        def new_func(*args,**kw):
+            return self / func / A(*args,**kw)
+        return new_func
 
 class CSimpInst(CInst):
     def __init__(self, unsafe=UnsafeType.NotSafe | UnsafeType.WithFuncs):
@@ -453,4 +605,3 @@ CS = CSimpInst(unsafe=UnsafeType.Safe)
 exp = Exp()
 explist = ExpList()
 
-# U = TypeVar('U')
