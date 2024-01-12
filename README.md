@@ -65,9 +65,8 @@ def load_user(user_id: int, db: sqlite3.Connection) -> User:
     ...
 
 
-def find_computer(computer : str, db : sqlite3.Connection):
+def find_computer( db : sqlite3.Connection,user: User) -> str:
     ...
-
 ```
 
 consider the above chain.  db is  common parameters to both. 
