@@ -74,7 +74,7 @@ consider the above chain.  db is  common parameters to both.
 Now you can call specify arugment to take from ret of previous function (X,Y,Z by the order) , or just use Orig to take the same parameter from original call. 
 
 ```python
-C / find_computer % A(db=Orig,computer=X) / load_user
+C / find_computer % A(db=Orig,user=X) / load_user
 ```
 
 ## Installation
