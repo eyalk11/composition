@@ -82,7 +82,6 @@ To install the project, simply run the following command:
 ```
 pip install composition 
 ```
-It has only one dependency (multimethod). 
 
 ## Notice
 
