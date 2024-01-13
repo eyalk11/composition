@@ -30,10 +30,15 @@ So, `/` is composition , `%` is partial and `@` is applying.
 
 ### Variables and piping
 You can work with [sspipe](https://github.com/sspipe/sspipe) to do nice things.
+
 ```
 C / X.items() * {'a': 'b', 'c': 'a'}
 ```
+
+Here I used `*` which is just like `@` but doesn't take it as keywords. 
+
 Also call functions. Variable X is special variable from pipe.
+
 There are the following special variables: 
 
 - X,Y,Z are taken from tuple of current elements if there is one.
@@ -123,6 +128,16 @@ Another example:
 C / set / reduce % (lambda x,y:x+y) @ (C /  self._hist_by_date.values() << (lambda s: list(s.keys())) )
 ```
 
+## Types of apply
+
+    `@` is normal apply. If it is a dict, uses **kwargs, a list uses *args.
+    So 
+    def my_function(a,b):
+        pass 
+    C/ list @ [1,2,3] won't work. C / my_function @ {'a':1,'b':2} will work.
+
+`*` is  simple apply. Take what on the other side as the firest argument to the function.
+    C/ list * [1,2,3] 
 
 
 
