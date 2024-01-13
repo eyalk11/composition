@@ -10,6 +10,7 @@ The project is a Python library that allows for composition with currying. It pr
 - Provides various operators for composition and application
 
 ## Usage
+(Checkout the tests for more examples. There is also some code documentation). 
 
 ```python
 from composition import C
