@@ -70,7 +70,7 @@ x= C.find_computer(db=Orig,computer=X.computer) / load_user @ ('a','b')
 ```
 Would also work.
 
-## More on partial (and function)
+### More on partial (and function)
 
 Partial can be done with class a or with dictionary
 
@@ -105,7 +105,7 @@ So on undistilled input, please use `CS` instead of `C`. which doesn't allow it.
 (otherwise an attacker might be able to inject a function in a string starting with ->).
 
 
-## Working with collections.
+### Working with collections.
 
 You can start from a collection and do << to apply function on each element (i.e. map).
 ```python
@@ -113,7 +113,7 @@ x= (C/[1,2,3] << '-> x*3') << (lambda x:x*3) | exp
 ```
 When you are done , you can do `| exp` or `| explist` to convert to expression(generator or list, depends on you) or list
 
-## Operator precedence
+### Operator precedence
 
 ```python
 C / list / zip & C / list @ range(5) ^ [4,8,9,10,11]
@@ -128,15 +128,15 @@ Another example:
 C / set / reduce % (lambda x,y:x+y) @ (C /  self._hist_by_date.values() << (lambda s: list(s.keys())) )
 ```
 
-## Types of apply
+### Types of apply
 
-    `@` is normal apply. If it is a dict, uses **kwargs, a list uses *args.
-    So 
-    ```python
-    def my_function(a,b):
-        pass 
-    C/ list @ [1,2,3] won't work. C / my_function @ {'a':1,'b':2} will work.
-    ```
+`@` is normal apply. If it is a dict, uses **kwargs, a list uses *args.
+So 
+```python
+def my_function(a,b):
+    pass 
+C/ list @ [1,2,3] won't work. C / my_function @ {'a':1,'b':2} will work.
+```
 
 `*` is  simple apply. Take what on the other side as the firest argument to the function.
 
