@@ -103,7 +103,7 @@ So on undistilled input, please use `CS` instead of `C`. which doesn't allow it.
 ## Working with collections.
 
 You can start from a collection and do << to apply function on each element (i.e. map).
-```
+```python
 x= (C/[1,2,3] << '-> x*3') << (lambda x:x*3) | exp
 ```
 When you are done , you can do `| exp` or `| explist` to convert to expression(generator or list, depends on you) or list
