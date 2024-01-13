@@ -26,25 +26,60 @@ So, `/` is composition , `%` is partial and `@` is applying.
 `(f / g)(x)` is `f(g(x))`
 
 
-`f% (lambda x:x*2)` sets the first variable to x*2. But it can also get a dictionary.
 
 
+### Variables and piping
+You can work with [sspipe](https://github.com/sspipe/sspipe) to do nice things.
+```
+C / X.items() * {'a': 'b', 'c': 'a'}
+```
+Also call functions. Variable X is special variable from pipe.
+There are the following special variables: 
 
+- X,Y,Z are taken from tuple of current elements if there is one.
+- Orig means that it is an original argument of the pipe 
+
+So arguments can be passed to functions along the chain.
+
+An example:
 
 ```python
-C / list / zip & C / list @ range(5) ^ [4,8,9,10,11]
-# Output: [(0, 4), (1, 8), (2, 9), (3, 10), (4, 11)]
+def load_user(user_id: int, db: sqlite3.Connection) -> User:
+    ...
+
+
+def find_computer( db : sqlite3.Connection,user: User) -> str:
+    ...
+
+C / find_computer % A(db=Orig,user=X) / load_user
 ```
 
-& is partial but in lower precedence .
-^ is applying with lower precedence
+You can use class `A` to specify arguments. This way it would know the context.
 
+Lets change it a bit.
+
+```
+def load_user(user_id: int, db ):
+    return User(user_id)
+x= C.find_computer(db=Orig,computer=X.computer) / load_user @ ('a','b')
+```
+Would also work.
+
+## More on partial (and function)
+
+Partial can be done with class a or with dictionary
+
+```
+def do(a,b):
+    pass
+C / do % {'a':3} @ 6
+```
+Or
 
 ```python
-C / set / reduce % (lambda x,y:x+y) @ (C /  self._hist_by_date.values() << (lambda s: list(s.keys())) )
-#The same as set(reduce(lambda x,y:x+y, [list(s.keys()) for s in self._hist_by_date.values()]) )
+C / find_computer % A(db=Orig,user=X) / load_user
 ```
-
+class `A` supports pipes.
 
 
 Partial supports function assigment, which means you can do:
@@ -55,27 +90,41 @@ Partial supports function assigment, which means you can do:
  f % {'b': "->b*a*2"} @ (1,3)
  or f (lambda b: b*2}
 ``` 
+We supports syntax `->b*a*2` to suggest a function.
+But that is not safe.
 
-It also supports currying. 
+#### Notice
 
-The term is used freely here. It means that the original arguments can be passed to function along the chain, if it serves the purpose. 
+The implementation can be unsafe because it converts string to functions. 
+So on undistilled input, please use `CS` instead of `C`. which doesn't allow it.
+(otherwise an attacker might be able to inject a function in a string starting with ->).
+
+
+## Working with collections.
+
+You can start from a collection and do << to apply function on each element (i.e. map).
+```
+x= (C/[1,2,3] << '-> x*3') << (lambda x:x*3) | exp
+```
+When you are done , you can do `| exp` or `| explist` to convert to expression(generator or list, depends on you) or list
+
+## Operator precedence
 
 ```python
-def load_user(user_id: int, db: sqlite3.Connection) -> User:
-    ...
-
-
-def find_computer( db : sqlite3.Connection,user: User) -> str:
-    ...
+C / list / zip & C / list @ range(5) ^ [4,8,9,10,11]
+# Output: [(0, 4), (1, 8), (2, 9), (3, 10), (4, 11)]
 ```
 
-consider the above chain.  db is  common parameters to both. 
+& is partial but in lower precedence .
+^ is applying with lower precedence
 
-Now you can call specify arugment to take from ret of previous function (X,Y,Z by the order) , or just use Orig to take the same parameter from original call. 
-
+Another example:
 ```python
-C / find_computer % A(db=Orig,user=X) / load_user
+C / set / reduce % (lambda x,y:x+y) @ (C /  self._hist_by_date.values() << (lambda s: list(s.keys())) )
 ```
+
+
+
 
 ## Installation
 To install the project, simply run the following command:
@@ -83,11 +132,6 @@ To install the project, simply run the following command:
 pip install composition 
 ```
 
-## Notice
-
-The implementation can be unsafe because it converts string to functions. 
-So on undistilled input, please use `CS` instead of `C`. 
-(otherwise an attacker might be able to inject a function in a string starting with ->).
 
 ## Contributing
 Contributions are welcome! Please fork the repository and submit a pull request.

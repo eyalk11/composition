@@ -1,3 +1,4 @@
+
 [tool.poetry]
 name = "python-composition"
 version = "0.1.0"
@@ -10,7 +11,7 @@ packages= [{include="composition"}]
 [tool.poetry.dependencies]
 python = "^3.10"
 multimethod="^1.10"
-sspipe="*"
+sspipe={ git = "https://github.com/eyalk11/sspipe.git", branch = "master" }
 
 
 [build-system]
