@@ -50,9 +50,7 @@ An example:
 
 ```python
 def load_user(user_id: int, db: sqlite3.Connection) -> User:
-    ...
-
-
+    return User(user_id)
 def find_computer( db : sqlite3.Connection,user: User) -> str:
     ...
 
@@ -61,12 +59,12 @@ C / find_computer % A(db=Orig,user=X) / load_user
 
 You can use class `A` to specify arguments. This way it would know the context.
 
-Lets change it a bit.
+Lets add to it a bit.
 
 ```python
-def load_user(user_id: int, db ):
-    return User(user_id)
-x= C.find_computer(db=Orig,computer=X.computer) / load_user @ ('a','b')
+def do_something( db, computer):
+    pass
+x= C.do_something(db=Orig,computer=X.computer) / load_user @ ('a','b')
 ```
 Would also work.
 
