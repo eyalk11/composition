@@ -31,7 +31,7 @@ So, `/` is composition , `%` is partial and `@` is applying.
 ### Variables and piping
 You can work with [sspipe](https://github.com/sspipe/sspipe) to do nice things.
 
-```
+```python
 C / X.items() * {'a': 'b', 'c': 'a'}
 ```
 
