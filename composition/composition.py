@@ -47,13 +47,8 @@ class UnsafeType(Flag):
     NotSafe = 0
     Safe = 1
     WithFuncs = 2
-    Currying = 4
+    Currying = 4 # used to have a meaning. Not anymore.
 
-
-class MyPipe(Pipe):
-    def __init__(self, name, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = name
 
 
 Y = Pipe(func=lambda x: x, name="Y")
@@ -68,6 +63,11 @@ OrigVar=ContextVar('Orig')
 
 
 class A:
+    '''
+    Can be used in the pipe to pass arguments to the function
+    You can `C / f/ A(*args,**kw)` would be similar to partial. But notice that you can use A(arg=X) to specify that the argument is from the pipe.
+    Or you can use A(arg=Orig) to specify that it would be added as an argument to the original function, before all pipes. 
+    '''
     def __init__(self, *args, **kw):
         self.constargs = args
         self.constkw = kw
@@ -130,16 +130,22 @@ class A:
 
 
 class Exp:
+    '''
+    converts  CInst to an expression when used after | 
+    '''
+
     pass
 
 
 class ExpList(Exp):
+    '''
+    converts  CInst to a class when used after |
+    '''
     pass
 
 
 
 class CallWithArgs():
-
 
 
     @singledispatchmethod
@@ -241,22 +247,7 @@ class CInst(Generic[P, T]):
         self.prev = prev
         self.origargs = None
         self._a = a
-    def __mul__(self, other):
-        args = self.decode_args(other,True)
-        if args is None:
-            args=other
-        return self.apply_int(args,other,True)
 
-    @singledispatchmethod
-    def __floordiv__(self, other: Callable) -> CInst[Q, T]:
-        return CInst(other, self, self._unsafe | UnsafeType.Currying)
-
-    @__floordiv__.register
-    def __floordiv__(self, other: str) -> CInst[Q, T]:
-        if self._unsafe & UnsafeType.Safe == UnsafeType.NotSafe:
-            return self.__floordiv__(CInst.conv_str_to_func(other), self._unsafe)
-        else:
-            raise "cant do it when safe"
 
     def __iter__(self):
         if self.col is None:
@@ -312,7 +303,7 @@ class CInst(Generic[P, T]):
         self.prev.func = nf
 
 
-        return self.prev.apply_int_b(origargs, bargs.args, bargs.kwargs)
+        return self.prev.apply_int_raw(origargs, bargs.args, bargs.kwargs)
 
     @staticmethod
     def update_args_from_additional(add_args, bargs, kwargs, sig):
@@ -369,8 +360,7 @@ class CInst(Generic[P, T]):
             bargs = args
         return bargs
 
-    def apply_int_b(self, origargs, args : typing.Tuple, kwargs: typing.Dict):
-        #bargs = CallWithArgs(self.func, args, kwargs)
+    def apply_int_raw(self, origargs, args : typing.Tuple, kwargs: typing.Dict):
         if self._a is not None:
             warnings.warn("A in this situation?")
 
@@ -391,6 +381,9 @@ class CInst(Generic[P, T]):
 
 
     def __or__(self, other):
+        '''
+        Turn collection to expression (genrator or list)
+        '''
         if self.col is None:
             raise ValueError('Can only use |  on collection')
         if type(other) == Exp:
@@ -404,6 +397,13 @@ class CInst(Generic[P, T]):
 
     @singledispatch
     def __truediv__(self, other: Callable) -> CInst:
+        '''
+        Applies composition. 
+        Can also be used to specify args with A / pipe. 
+        Examples:  a. C / X.items() * {'a': 'b', 'c': 'a'}
+                   b. C / list / zip & C / list @ range(5) ^ [4, 8, 9, 10, 11]
+                   c. C / sorted / A(key=lambda x: x[1]) / list / X.items()  * (r())
+        '''
         if self.col is not None:
             return CInst(other(self.col), unsafe=self._unsafe)
         return CInst(other, self, self._unsafe & (~UnsafeType.Currying), None)
@@ -434,7 +434,7 @@ class CInst(Generic[P, T]):
         return self.__matmul__(other)
 
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> T:
-        return self.apply_int_b(CallWithArgs(self.func,args,kwargs), args, kwargs)
+        return self.apply_int_raw(CallWithArgs(self.func,args,kwargs), args, kwargs)
 
     @singledispatchmethod
     def __matmul__(self, other) -> T:
@@ -445,8 +445,34 @@ class CInst(Generic[P, T]):
 
         return self.apply_int( args if (args:= self.decode_args(other,False)) is not None else other , other)
 
+    @staticmethod
+    def conv_str_to_func(st):
+        if st.startswith('->'):
+            return eval('lambda x:' + st[2:])
+
+    '''
+    Simple apply. Take what on the other side as the firest argument to the function.
+    C/ list * [1,2,3] 
+    '''
+    def __mul__(self, other):
+        args = self.decode_args(other,True)
+        if args is None:
+            args=other
+        return self.apply_int(args,other,True)
+
+    '''
+    Regular apply. If it is a dict, uses **kwargs, a list uses *args.
+    So 
+    def my_function(a,b):
+        pass 
+    C/ list @ [1,2,3] won't work. C / my_function @ {'a':1,'b':2} will work.
+    '''
+
     @__matmul__.register
     def __matmul__(self, other: typing.Callable) -> T:
+        '''
+
+        '''
         if self.col is None:
             return self.apply(other)
         if type(self.col) is dict:
@@ -454,10 +480,6 @@ class CInst(Generic[P, T]):
         else:
             return other(*self.col)
 
-    @staticmethod
-    def conv_str_to_func(st):
-        if st.startswith('->'):
-            return eval('lambda x:' + st[2:])
 
     @__matmul__.register
     def __matmul__(self, other: str) -> T:
@@ -481,9 +503,16 @@ class CInst(Generic[P, T]):
 
     @__lshift__.register
     def __lshift__(self, other: str):
+        '''
+        Act on each element of collection with function
+        '''
         return self.__lshift__(CInst.conv_str_to_func(other))
 
     def __mod__(self, other):
+        '''
+        Applies paritial
+        d= C / f % {'b': (lambda b:b*2)} @ (1,2,3)
+        '''
         def handle_currying():
             origsig = signature(self.func)
             f = partial(self.func, **other)
@@ -571,6 +600,13 @@ class CInst(Generic[P, T]):
         return CInst(fn, self.prev, unsafe=self._unsafe)
 
     def __getattr__(self,name):
+        '''
+        
+        Runs function from outer scope.
+        def find_computer(db , computer : str):
+            print(db,computer)
+        C.find_computer(db=Orig,computer=X.computer) / load_user @ ('a','b')
+        '''
         import inspect
         locals= inspect.currentframe().f_back.f_locals
         if name in locals:

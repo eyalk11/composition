@@ -15,18 +15,13 @@ def test_dics():
     def r():
         return {'a':'b','c':'a'}
 
-    x= CS // sorted % { 'key': lambda x:x[1]} / list  * (r().items())
+    x= CS / sorted % { 'key': lambda x:x[1]} / list  * (r().items())
     assert x == [('c', 'a'), ('a', 'b')]
 
     x = C / sorted / A(key=lambda x: x[1]) / list / X.items()  * (r())
     assert x == [('c', 'a'), ('a', 'b')]
     z = C / X.items() * {'a': 'b', 'c': 'a'}
     assert 'dict_items' in str(type(z))
-
-
-# def test_curry():
-#     x=  (C // h // g // f @ (3, 7,8))
-#     assert x==7
 
 
 def test_col():
