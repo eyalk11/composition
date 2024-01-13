@@ -95,11 +95,10 @@ Partial supports function assigment, which means you can do:
  or f (lambda b: b*2}
 ``` 
 We supports syntax `->b*a*2` to suggest a function.
-But that is not safe.
 
-#### Notice
+#### Notice (important!)
 
-The implementation can be unsafe because it converts string to functions. 
+This implementation can be unsafe because it converts string to functions. 
 So on undistilled input, please use `CS` instead of `C`. which doesn't allow it.
 (otherwise an attacker might be able to inject a function in a string starting with ->).
 
