@@ -58,7 +58,7 @@ You can use class `A` to specify arguments. This way it would know the context.
 
 Lets change it a bit.
 
-```
+```python
 def load_user(user_id: int, db ):
     return User(user_id)
 x= C.find_computer(db=Orig,computer=X.computer) / load_user @ ('a','b')
@@ -69,7 +69,7 @@ Would also work.
 
 Partial can be done with class a or with dictionary
 
-```
+```python
 def do(a,b):
     pass
 C / do % {'a':3} @ 6
