@@ -132,12 +132,17 @@ C / set / reduce % (lambda x,y:x+y) @ (C /  self._hist_by_date.values() << (lamb
 
     `@` is normal apply. If it is a dict, uses **kwargs, a list uses *args.
     So 
+    ```python
     def my_function(a,b):
         pass 
     C/ list @ [1,2,3] won't work. C / my_function @ {'a':1,'b':2} will work.
+    ```
 
 `*` is  simple apply. Take what on the other side as the firest argument to the function.
-    C/ list * [1,2,3] 
+
+```python
+    C/ list * [1,2,3]
+```
 
 
 
