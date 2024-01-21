@@ -43,6 +43,14 @@ def test_curry_part():
     assert d==(4)
     d = C / f % {'b': '->(a+b)*2'} @ (1, 2, 3)
     assert d == (6)
+def test_t():
+    y=(C / (X)) * 2
+    assert y==2
+    z= (C/ (X +2)  >>   (C/range(1,5))) | exp
+    z = list(z)
+    assert z == [3, 4, 5, 6]
+    return z
+
 def test_adv():
     x=C / list / zip & C / list @ range(5) ^ [4, 8, 9, 10, 11]
     assert x==[(0, 4), (1, 8), (2, 9), (3, 10), (4, 11)]

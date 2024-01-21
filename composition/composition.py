@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import threading
 import typing
 import warnings
 from contextvars import ContextVar,Context
@@ -60,29 +61,35 @@ XVar=ContextVar('X')
 YVar=ContextVar('Y')
 ZVar=ContextVar('Z')
 OrigVar=ContextVar('Orig')
+TLocal=ContextVar('TLocal')
+
 
 
 class A:
     '''
     Can be used in the pipe to pass arguments to the function
     You can `C / f/ A(*args,**kw)` would be similar to partial. But notice that you can use A(arg=X) to specify that the argument is from the pipe.
-    Or you can use A(arg=Orig) to specify that it would be added as an argument to the original function, before all pipes. 
+    Or you can use A(arg=Orig) to specify that it would be taken from an argument to the original function, before all pipes. 
     '''
     def __init__(self, *args, **kw):
         self.constargs = args
         self.constkw = kw
+    @staticmethod 
+    def get_arg_by_name(v):
+        if v == 'X':
+            arg = 0
+        elif v == 'Y':
+            arg = 1
+        elif v == 'Z':
+            arg = 2
+        else:
+            arg = None
+        return arg
 
     def resolve(self, sig: Signature, origargs, args):
         def resolve_regarg(k,v):
             nonlocal used_set
-            if v._name == 'X':
-                arg = 0
-            elif v._name == 'Y':
-                arg = 1
-            elif v._name == 'Z':
-                arg = 2
-            else:
-                arg = None
+            arg = A.get_arg_by_name(v._name)
             if arg is not None:
                 if arg > len(args.args):
                     raise Exception("not enough args")
@@ -93,6 +100,9 @@ class A:
             f=dict(zip([XVar,YVar,ZVar][:len(args.args)],args.args))
             for k,v in f.items():
                 k.set(v)
+            loc=threading.local()
+            loc.usedvars = set()
+            TLocal.set(loc)
 
 
             bconst = sig.bind_partial(*self.constargs, **self.constkw)
@@ -114,10 +124,11 @@ class A:
                     v = _resolve(v, toresolve )
                 dic[k]=v
 
+            used_set.update(filter(lambda x: x is not None, map(A.get_arg_by_name,loc.usedvars)))
             args.removearg(used_set)
 
-            for k in dic.items():
-                args.removekwarg(k)
+            for k in loc.usedvars:
+                args.removekwarg(k.lower())
             return dic
 
         used_set = set()
@@ -156,7 +167,7 @@ class CallWithArgs():
             return
         try:
             s = signature(func)
-        except ValueError:
+        except (ValueError,TypeError):
             if (type(other) is tuple):
                 self._args = other
                 self._kwargs = {}
@@ -188,12 +199,28 @@ class CallWithArgs():
     def __init_b(self, func : Callable, args : typing.Tuple, kwargs : typing.Dict):
         self._args=args
         self._kwargs=kwargs
+        self.func=func
+        self.init_internal(args, kwargs)
+
+    def init_internal(self, args,  kwargs):
         try:
-            s = signature(func)
+            s = signature(self.func)
         except ValueError:
-            self._arguments=None
+            self._arguments = None
+        except TypeError:
+            self._arguments = None
         else:
-            b = s.bind_partial(*args, **kwargs)
+            try:
+                b = s.bind_partial(*args, **kwargs)
+            except:
+                warnings.warn("didnt work , will try to change sig")
+                newparams = s.parameters.copy()
+                for k, v in s.parameters.items():
+                    if v.kind != _ParameterKind.POSITIONAL_OR_KEYWORD:
+                        newparams[k] = inspect.Parameter(k, _ParameterKind.POSITIONAL_OR_KEYWORD, default=s.parameters[k].default, annotation=s.parameters[k].annotation)
+                s=s.replace(parameters=newparams.values())
+                b = s.bind_partial(*args, **kwargs)
+
 
             self._arguments = b.arguments
             self._kwargs = b.kwargs
@@ -207,7 +234,18 @@ class CallWithArgs():
 
 
     def removekwarg(self,k):
-        self._kwargs.pop(k,None)
+        if k in self._kwargs:
+            self._kwargs.pop(k)
+        else:
+            return
+            if not self.arguments:
+                raise ValueError("Cant do it")
+            try:
+                self._arguments.pop(k)
+                self.init_internal(**self._arguments)
+            except:
+                raise ValueError("Cant do it2")
+
     @property
     def args(self):
         return self._args
@@ -232,7 +270,7 @@ class CInst(Generic[P, T]):
         return False
 
     def __init__(self, other: typing.Union[typing.Collection, typing.Generator, Callable],prev : CInst = None,
-               unsafe: UnsafeType = UnsafeType.NotSafe,a: typing.Optional[A] = None):
+               unsafe: UnsafeType = UnsafeType.NotSafe,a: typing.Optional[A] = None, isshift=False):
         self.func = None
         self.col = None
         if other is not None:
@@ -247,6 +285,7 @@ class CInst(Generic[P, T]):
         self.prev = prev
         self.origargs = None
         self._a = a
+        self.is_shift=isshift
 
 
     def __iter__(self):
@@ -334,19 +373,7 @@ class CInst(Generic[P, T]):
 
         return self.prev.apply_int(origargs, res,simple=True)
 
-        # if self._unsafe & UnsafeType.Currying != UnsafeType.Currying:
-        # return basic(bargs, bkwargs)
-        # else:
-        # try:
-        # sig = signature(self.func)
-        # b = sig.bind(*bargs, **bkwargs)
-        # except TypeError:
 
-        # add_args= dictfilt(dictnfilt(origargs,b.arguments),sig.parameters.keys())
-        # bargs ,bkwargs= CINST.update_args_from_additional(add_args, bargs, bkwargs, sig)
-
-        # return basic(bargs, bkwargs)
-        # return basic(bargs, bkwargs)
 
     def decode_args(self, args, simple):
         if self.func is None:
@@ -413,6 +440,10 @@ class CInst(Generic[P, T]):
         return self/ (lambda x:x) / A(x=other)
 
     @__truediv__.register
+    def __truediv__(self, other: Exp) -> CInst[Q, T]:
+        return self | exp
+
+    @__truediv__.register
     def __truediv__(self, other: typing.Collection) -> CInst[Q, T]:
         return CInst(other, self._unsafe)
 
@@ -441,9 +472,9 @@ class CInst(Generic[P, T]):
 
         return self.apply(other)
 
-    def apply(self, other):
+    def apply(self, other,simple=False):
 
-        return self.apply_int( args if (args:= self.decode_args(other,False)) is not None else other , other)
+        return self.apply_int( args if (args:= self.decode_args(other,False)) is not None else other , other,simple=simple)
 
     @staticmethod
     def conv_str_to_func(st):
@@ -508,6 +539,16 @@ class CInst(Generic[P, T]):
         '''
         return self.__lshift__(CInst.conv_str_to_func(other))
 
+    def __rshift__(self, other):
+        def gen():
+            nonlocal other
+            if isinstance(other,CInst):
+                other=other.col
+            for k in other:
+                yield self.apply(k,simple=True)
+        return   CInst( gen() , None)
+
+
     def __mod__(self, other):
         '''
         Applies paritial
@@ -552,9 +593,10 @@ class CInst(Generic[P, T]):
                                                          default=origsig.parameters[k].default,
                                                          annotation=origsig.parameters[k].annotation)
 
-            nf = partial(self.func, **nother)  # determined values
 
             newsig = sig.replace(parameters=newparams.values())
+
+            nf = partial(self.func, **nother)  # determined values
 
             def newfunc(*aargs, **kwargs):
                 b = newsig.bind(*aargs, **kwargs)
@@ -634,6 +676,8 @@ class CSimpInst(CInst):
 
     def __call__(self):
         raise NotImplementedError()
+    def apply_int(self, origargs: CallWithArgs, args: typing.Any,simple=False) -> T:
+        return args
 
 
 C = CSimpInst()
