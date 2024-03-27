@@ -43,13 +43,21 @@ def test_curry_part():
     assert d==(4)
     d = C / f % {'b': '->(a+b)*2'} @ (1, 2, 3)
     assert d == (6)
+    #d = C / f % {'b': lambda a,b: a+b} @ (1, 2, 3)
+    #assert d== 3
 def test_t():
-    y=(C / (X)) * 2
-    assert y==2
-    z= (C/ (X +2)  >>   (C/range(1,5))) | exp
+    y=C / (X+1) * 2
+    assert y==3
+    z= C/ (X +2)  >>   range(1,5)
     z = list(z)
     assert z == [3, 4, 5, 6]
-    return z
+    #return z
+
+def test_tb():
+
+    #y=C/ X['a'].update(X['b']) *  {'a': {'d':3},'b':2}
+    y = C / (X+ X[2:]) * [1,2,3]
+    assert y==[1,2,3,3]
 
 def test_adv():
     x=C / list / zip & C / list @ range(5) ^ [4, 8, 9, 10, 11]

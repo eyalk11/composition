@@ -43,12 +43,10 @@ P = ParamSpec('P')
 Q = ParamSpec('Q')
 U = TypeVar('U')
 
-
 class UnsafeType(Flag):
     NotSafe = 0
     Safe = 1
-    WithFuncs = 2
-    Currying = 4 # used to have a meaning. Not anymore.
+    Currying = 2
 
 
 
@@ -62,7 +60,6 @@ YVar=ContextVar('Y')
 ZVar=ContextVar('Z')
 OrigVar=ContextVar('Orig')
 TLocal=ContextVar('TLocal')
-
 
 
 class A:
@@ -270,7 +267,7 @@ class CInst(Generic[P, T]):
         return False
 
     def __init__(self, other: typing.Union[typing.Collection, typing.Generator, Callable],prev : CInst = None,
-               unsafe: UnsafeType = UnsafeType.NotSafe,a: typing.Optional[A] = None, isshift=False):
+               unsafe: UnsafeType = UnsafeType.NotSafe | UnsafeType.Currying,a: typing.Optional[A] = None, isshift=False):
         self.func = None
         self.col = None
         if other is not None:
@@ -409,7 +406,7 @@ class CInst(Generic[P, T]):
 
     def __or__(self, other):
         '''
-        Turn collection to expression (genrator or list)
+        Turn collection to expression (genrator or list) or apply filter
         '''
         if self.col is None:
             raise ValueError('Can only use |  on collection')
@@ -417,6 +414,10 @@ class CInst(Generic[P, T]):
             return self.col
         elif type(other) == ExpList:
             return list(self.col)
+        elif type(other) == str:
+            return CInst(filter(conv_str_to_func(other), self.col),self,self._unsafe) 
+        else:
+            return CInst(filter(other, self.col),self,self._unsafe)
         #elif isinstance(other,Pipe ): #we do pipe
 #   inst=Pipe(lambda x: _resolve(self, x) | other)
 
@@ -434,6 +435,17 @@ class CInst(Generic[P, T]):
         if self.col is not None:
             return CInst(other(self.col), unsafe=self._unsafe)
         return CInst(other, self, self._unsafe & (~UnsafeType.Currying), None)
+
+    @singledispatchmethod
+    def __floordiv__(self, other: Callable) -> CInst[Q, T]:
+        return CInst(other, self, self._unsafe | UnsafeType.Currying)
+
+    @__floordiv__.register
+    def __floordiv__(self, other: str) -> CInst[Q, T]:
+        if self._unsafe & UnsafeType.Safe == UnsafeType.NotSafe:
+            return self.__floordiv__(CInst.conv_str_to_func(other), self._unsafe)
+        else:
+            raise Exception("cant do it when safe")
 
     @__truediv__.register
     def __truediv__(self, other: Pipe) -> CInst[Q, T]:
@@ -537,7 +549,9 @@ class CInst(Generic[P, T]):
         '''
         Act on each element of collection with function
         '''
-        return self.__lshift__(CInst.conv_str_to_func(other))
+        if self._unsafe & UnsafeType.Safe == UnsafeType.NotSafe:
+            return self.__lshift__(CInst.conv_str_to_func(other))
+        return self.__lshift__(other)
 
     def __rshift__(self, other):
         def gen():
@@ -633,7 +647,7 @@ class CInst(Generic[P, T]):
             fn = partial(self.func, *other)
         elif (type(other) == dict):
 
-            fn = handle_currying() if self._unsafe & UnsafeType.WithFuncs == UnsafeType.WithFuncs else partial(
+            fn = handle_currying() if self._unsafe & UnsafeType.Currying == UnsafeType.Currying else partial(
                 self.func, **other)
 
 
@@ -667,7 +681,7 @@ class CInst(Generic[P, T]):
         return new_func
 
 class CSimpInst(CInst):
-    def __init__(self, unsafe=UnsafeType.NotSafe | UnsafeType.WithFuncs):
+    def __init__(self, unsafe=UnsafeType.NotSafe | UnsafeType.Currying):
         self.func = None
         self._unsafe = unsafe
         self.prev = None
